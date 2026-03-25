@@ -1,13 +1,9 @@
 from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-import zipfile, os, time, requests, json
+import zipfile, os, time, requests, json, random, re
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from urllib.parse import urlparse, parse_qs
-import random
 from bs4 import BeautifulSoup
 
 app = FastAPI()
@@ -24,49 +20,51 @@ app.add_middleware(
 class Data(BaseModel):
     links: list[str]
 
-# 🧹 ZIP delete helper
+# 🧹 delete zip later
 def delete_file(path: str):
     try:
         time.sleep(600)
         if os.path.exists(path):
             os.remove(path)
-            print("🧹 Deleted:", path)
-    except Exception as e:
-        print("❌ Delete error:", e)
+    except:
+        pass
 
 
-# ================= FLIPKART IMAGE =================
-# ================= FLIPKART IMAGE (FAST VERSION) =================
+# ================= FLIPKART IMAGE (FAST, NO SELENIUM) =================
 @app.post("/extract-live")
 def extract_live(data: Data, background_tasks: BackgroundTasks):
 
     def event_stream():
         os.makedirs("images", exist_ok=True)
 
-        downloaded = []
-        total = len(data.links)
-
         headers = {
             "User-Agent": "Mozilla/5.0",
-            "Accept-Language": "en-US,en;q=0.9"
+            "Referer": "https://www.flipkart.com/"
         }
+
+        downloaded = []
+        total = len(data.links)
 
         for i, link in enumerate(data.links):
             try:
                 yield f"data: {json.dumps({'status': f'Processing {i+1}/{total}'})}\n\n"
 
-                r = requests.get(link, headers=headers, timeout=15)
-
+                r = requests.get(link, headers=headers, timeout=10)
                 soup = BeautifulSoup(r.text, "html.parser")
 
-                # 🔥 og:image
-                meta = soup.find("meta", property="og:image")
-                img_url = meta["content"] if meta else None
+                img_url = None
+
+                # 🔥 extract from scripts (BEST)
+                for script in soup.find_all("script"):
+                    if script.string and "rukminim" in script.string:
+                        match = re.search(r'https://rukminim[^"]+', script.string)
+                        if match:
+                            img_url = match.group(0)
+                            break
 
                 # 🔥 fallback
                 if not img_url:
-                    imgs = soup.find_all("img")
-                    for img in imgs:
+                    for img in soup.find_all("img"):
                         src = img.get("src")
                         if src and "rukminim" in src:
                             img_url = src
@@ -76,7 +74,7 @@ def extract_live(data: Data, background_tasks: BackgroundTasks):
                     filename = img_url.split("/")[-1].split("?")[0]
                     path = f"images/{filename}"
 
-                    img_res = requests.get(img_url, timeout=15)
+                    img_res = requests.get(img_url, headers=headers, timeout=10)
 
                     with open(path, "wb") as f:
                         f.write(img_res.content)
@@ -84,7 +82,6 @@ def extract_live(data: Data, background_tasks: BackgroundTasks):
                     downloaded.append(path)
 
                     yield f"data: {json.dumps({'status': f'Downloaded {filename}'})}\n\n"
-
                 else:
                     yield f"data: {json.dumps({'status': 'Image not found'})}\n\n"
 
@@ -129,17 +126,15 @@ def download_file(filename: str):
 
 # ================= AMAZON IMAGE =================
 USER_AGENTS = [
-"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
-"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/119 Safari/537.36",
-"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/118 Safari/537.36"
+"Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+"Mozilla/5.0 (X11; Linux x86_64)"
 ]
 
 def get_headers():
     return {
         "User-Agent": random.choice(USER_AGENTS),
-        "Accept-Language": "en-US,en;q=0.9",
-        "Referer": "https://www.amazon.in/",
-        "Connection": "keep-alive"
+        "Referer": "https://www.amazon.in/"
     }
 
 def extract_asin(link):
@@ -152,10 +147,7 @@ def extract_asin(link):
 
     parsed = urlparse(link)
     params = parse_qs(parsed.query)
-    if "field-asin" in params:
-        return params["field-asin"][0]
-
-    return None
+    return params.get("field-asin", [None])[0]
 
 
 @app.post("/extract-amazon-live")
@@ -163,6 +155,7 @@ def extract_amazon(data: Data, background_tasks: BackgroundTasks):
 
     def event_stream():
         os.makedirs("images", exist_ok=True)
+
         downloaded = []
         total = len(data.links)
 
@@ -176,7 +169,7 @@ def extract_amazon(data: Data, background_tasks: BackgroundTasks):
                     continue
 
                 url = f"https://www.amazon.in/dp/{asin}"
-                r = requests.get(url, headers=get_headers(), timeout=20)
+                r = requests.get(url, headers=get_headers(), timeout=10)
 
                 soup = BeautifulSoup(r.text, "html.parser")
                 img = soup.select_one("#landingImage")
@@ -185,7 +178,7 @@ def extract_amazon(data: Data, background_tasks: BackgroundTasks):
 
                 if img_url:
                     path = f"images/{asin}.jpg"
-                    img_res = requests.get(img_url, headers=get_headers(), timeout=20)
+                    img_res = requests.get(img_url, headers=get_headers(), timeout=10)
 
                     with open(path, "wb") as f:
                         f.write(img_res.content)
@@ -195,8 +188,6 @@ def extract_amazon(data: Data, background_tasks: BackgroundTasks):
                     yield f"data: {json.dumps({'status': f'Downloaded {asin}'})}\n\n"
                 else:
                     yield f"data: {json.dumps({'status': 'Image not found'})}\n\n"
-
-                time.sleep(random.uniform(2,5))
 
             except Exception as e:
                 yield f"data: {json.dumps({'status': str(e)})}\n\n"
@@ -224,23 +215,21 @@ def extract_amazon(data: Data, background_tasks: BackgroundTasks):
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-# ================= REVIEW FIX =================
+# ================= FIX LINK (FAST, NO SELENIUM) =================
 @app.post("/fix-flipkart-link")
 def fix_flipkart(data: Data):
 
-    chrome_options = Options()
-    chrome_options.add_argument("--headless=new")
-
-    driver = webdriver.Chrome(options=chrome_options)
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Referer": "https://www.flipkart.com/"
+    }
 
     fixed_links = []
 
     for link in data.links:
         try:
-            driver.get(link)
-            time.sleep(3)
-
-            final_url = driver.current_url
+            r = requests.get(link, headers=headers, timeout=10)
+            final_url = r.url
 
             pid = None
             if "pid=" in final_url:
@@ -254,65 +243,47 @@ def fix_flipkart(data: Data):
         except Exception as e:
             fixed_links.append(f"❌ Error: {str(e)}")
 
-    driver.quit()
-
     return {"fixed": fixed_links}
 
 
-# ================= FIND REVIEW PAGE =================
+# ================= FIND REVIEW (FAST, NO SELENIUM) =================
 @app.post("/find-review-page")
 def find_review(data: Data):
 
     base_url = data.links[0]
 
-    chrome_options = Options()
-    chrome_options.add_argument("--headless=new")
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
 
-    driver = webdriver.Chrome(options=chrome_options)
-
-    def is_review_page():
-        try:
-            body = driver.page_source.lower()
-
-            # 🔥 better detection
-            return (
-                "ratings & reviews" in body
-                or "customer review" in body
-                or "reviews" in driver.title.lower()
-            )
-        except:
-            return False
+    def is_review(text):
+        text = text.lower()
+        return "review" in text or "ratings & reviews" in text
 
     found_url = None
 
-    # 🔥 Phase 1 (1–100)
     for i in range(1, 101):
         try:
             url = f"{base_url}:{i}"
-            driver.get(url)
-            time.sleep(3)
+            r = requests.get(url, headers=headers, timeout=8)
 
-            if is_review_page():
+            if is_review(r.text):
                 found_url = url
                 break
         except:
             pass
 
-    # 🔥 Phase 2 (jump 100–1000)
     if not found_url:
         for i in range(100, 1001, 100):
             try:
                 url = f"{base_url}:{i}"
-                driver.get(url)
-                time.sleep(3)
+                r = requests.get(url, headers=headers, timeout=8)
 
-                if is_review_page():
+                if is_review(r.text):
                     found_url = url
                     break
             except:
                 pass
-
-    driver.quit()
 
     if found_url:
         return {"found": True, "url": found_url}
