@@ -29,8 +29,7 @@ export default function ReviewTool({ goBack }: any) {
 
       if (data.found) {
         setReviewUrl(data.url);
-      // 🔥 AUTO OPEN NEW TAB
-  window.open(data.url, "_blank");}
+      }
  
       else {
         alert("❌ No review found");

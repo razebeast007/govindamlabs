@@ -76,14 +76,6 @@ export default function FlipkartTool({ goBack }: any) {
 
                 const zipUrl = `https://govindamlabs.onrender.com/download/${data.zip}`;
                 setDownloadUrl(zipUrl);
-
-                // 🔥 AUTO DOWNLOAD
-                const a = document.createElement("a");
-                a.href = zipUrl;
-                a.download = "images.zip";
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
               }
 
             } catch (e) {

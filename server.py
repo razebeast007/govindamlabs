@@ -36,39 +36,38 @@ def delete_file(path: str):
 
 
 # ================= FLIPKART IMAGE =================
+# ================= FLIPKART IMAGE (FAST VERSION) =================
 @app.post("/extract-live")
 def extract_live(data: Data, background_tasks: BackgroundTasks):
 
     def event_stream():
         os.makedirs("images", exist_ok=True)
 
-        chrome_options = Options()
-        chrome_options.add_argument("--headless=new")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-
-        driver = webdriver.Chrome(options=chrome_options)
-
         downloaded = []
         total = len(data.links)
+
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept-Language": "en-US,en;q=0.9"
+        }
 
         for i, link in enumerate(data.links):
             try:
                 yield f"data: {json.dumps({'status': f'Processing {i+1}/{total}'})}\n\n"
 
-                driver.get(link)
-                time.sleep(3)
+                r = requests.get(link, headers=headers, timeout=15)
 
-                img_url = driver.execute_script("""
-                    var meta = document.querySelector("meta[property='og:image']");
-                    return meta ? meta.content : null;
-                """)
+                soup = BeautifulSoup(r.text, "html.parser")
 
+                # 🔥 og:image
+                meta = soup.find("meta", property="og:image")
+                img_url = meta["content"] if meta else None
+
+                # 🔥 fallback
                 if not img_url:
-                    imgs = driver.find_elements(By.TAG_NAME, "img")
+                    imgs = soup.find_all("img")
                     for img in imgs:
-                        src = img.get_attribute("src")
+                        src = img.get("src")
                         if src and "rukminim" in src:
                             img_url = src
                             break
@@ -77,9 +76,10 @@ def extract_live(data: Data, background_tasks: BackgroundTasks):
                     filename = img_url.split("/")[-1].split("?")[0]
                     path = f"images/{filename}"
 
-                    r = requests.get(img_url, timeout=15)
+                    img_res = requests.get(img_url, timeout=15)
+
                     with open(path, "wb") as f:
-                        f.write(r.content)
+                        f.write(img_res.content)
 
                     downloaded.append(path)
 
@@ -90,8 +90,6 @@ def extract_live(data: Data, background_tasks: BackgroundTasks):
 
             except Exception as e:
                 yield f"data: {json.dumps({'status': str(e)})}\n\n"
-
-        driver.quit()
 
         if not downloaded:
             yield f"data: {json.dumps({'status': 'No images found', 'done': True})}\n\n"
