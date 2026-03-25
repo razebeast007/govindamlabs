@@ -1,0 +1,87 @@
+.eye {
+  width: 80px;
+  height: 80px;
+  background: radial-gradient(circle at 30% 30%, #fff, #d1d5db);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+  100% { transform: translateY(0); }
+}
+
+.pupil {
+  width: 25px;
+  height: 25px;
+  background: black;
+  border-radius: 50%;
+}
+
+.thought {
+  color: white;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+/* smoke */
+.smoke-particle {
+  position: absolute;
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, rgba(255,0,0,0.6), transparent);
+  border-radius: 50%;
+  animation: smoke 2s forwards;
+}
+
+@keyframes smoke {
+  from { opacity: 1; transform: scale(0.5); }
+  to { opacity: 0; transform: scale(1.5) translateY(-100px); }
+}
+
+/* 💥 SMOOTH BLAST PARTICLES */
+.eye-particle {
+  position: fixed;
+  width: 10px;
+  height: 10px;
+  background: radial-gradient(circle, red, transparent);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9999;
+  animation: particleFly 1.2s ease-out forwards;
+}
+
+@keyframes particleFly {
+  0% {
+    opacity: 1;
+    transform: scale(1) translate(0, 0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.3) translate(var(--x), var(--y));
+  }
+}
+
+/* 👻 SMOOTH DISAPPEAR */
+.fade-out {
+  opacity: 0;
+  transform: scale(0.3);
+  transition: all 0.5s ease;
+}
+
+/* ✨ SMOOTH REAPPEAR */
+.fade-in {
+  opacity: 1;
+  transform: scale(1);
+  transition: all 0.5s ease;
+}
+
+@keyframes fadeSmoke {
+  0% { opacity: 0.8; }
+  100% { opacity: 0; }
+}
