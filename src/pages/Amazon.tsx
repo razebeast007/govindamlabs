@@ -1,85 +1,108 @@
 import { useRef, useState } from "react";
 
 export default function AmazonTool({ goBack }: any) {
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
   const [logs, setLogs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
+  // 🔥 MAIN EXTRACT FUNCTION
   const extract = async () => {
-  const raw = textareaRef.current?.value || "";
-  const links = raw.split("\n").filter(l => l.trim());
+    const raw = textareaRef.current?.value || "";
+    const links = raw.split("\n").filter(l => l.trim());
 
-  if (links.length === 0) {
-    alert("Links daal pehle 😒");
-    return;
-  }
+    if (links.length === 0) {
+      alert("Links daal pehle 😒");
+      return;
+    }
 
-  setLogs([]);
-  setLoading(true);
-  setProgress(5);
-  setDownloadUrl(null);
+    setLogs([]);
+    setLoading(true);
+    setProgress(5);
+    setDownloadUrl(null);
 
-  try {
-    const response = await fetch("http://127.0.0.1:8000/extract-amazon-live", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ links })
-    });
+    try {
+      const response = await fetch("https://govindamlabs.onrender.com/extract-amazon-live", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ links })
+      });
 
-    const reader = response.body?.getReader();
-    const decoder = new TextDecoder();
+      if (!response.body) throw new Error("No stream");
 
-    let doneCount = 0;
-    const total = links.length;
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
 
-    while (true) {
-      const { done, value } = await reader!.read();
-      if (done) break;
+      let buffer = "";
+      let doneCount = 0;
+      const total = links.length;
+      let downloadTriggered = false;
 
-      const chunk = decoder.decode(value);
-      const lines = chunk.split("\n\n");
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      for (let line of lines) {
-        if (line.startsWith("data: ")) {
-          const data = JSON.parse(line.replace("data: ", ""));
+        buffer += decoder.decode(value, { stream: true });
 
-          // 🧠 log show
-          if (data.status) {
-            setLogs(prev => [...prev, data.status]);
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() || "";
 
-            // 🔥 progress update
-            if (data.status.includes("Downloaded") || data.status.includes("Processing")) {
-              doneCount++;
-              const percent = Math.min(95, Math.floor((doneCount / total) * 100));
-              setProgress(percent);
+        for (let part of parts) {
+          if (part.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(part.replace("data: ", ""));
+
+              // 🧠 LOGS
+              if (data.status) {
+                setLogs(prev => [...prev, data.status]);
+
+                // 🔥 PROGRESS
+                if (data.status.includes("Processing")) {
+                  doneCount++;
+                  const percent = Math.min(95, Math.floor((doneCount / total) * 100));
+                  setProgress(percent);
+                }
+              }
+
+              // 📦 DONE
+              if (data.done && !downloadTriggered) {
+                downloadTriggered = true;
+
+                setProgress(100);
+
+                const zipUrl = `https://govindamlabs.onrender.com/download/${data.zip}`;
+                setDownloadUrl(zipUrl);
+
+                // 🔥 AUTO DOWNLOAD
+                const a = document.createElement("a");
+                a.href = zipUrl;
+                a.download = "images.zip";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+              }
+
+            } catch (e) {
+              console.warn("Parse error:", e);
             }
-          }
-
-          // 📦 DONE → ZIP ready
-          if (data.done) {
-            setProgress(100);
-
-            // 🔥 download trigger
-            const zipUrl = `http://127.0.0.1:8000/download/${data.zip}`;
-
-            setDownloadUrl(zipUrl);
           }
         }
       }
+
+    } catch (err) {
+      console.error(err);
+      alert("Error hua 💀");
     }
 
-  } catch (err) {
-    console.error(err);
-    alert("Error hua 💀");
-  }
+    setLoading(false);
+  };
 
-  setLoading(false);
-};
-
+  // 🔝 scroll
   const scrollTop = () => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -88,10 +111,12 @@ export default function AmazonTool({ goBack }: any) {
     window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
   };
 
+  // 🔄 reset
   const reset = () => {
     if (textareaRef.current) textareaRef.current.value = "";
     setDownloadUrl(null);
     setProgress(0);
+    setLogs([]);
   };
 
   return (
@@ -128,31 +153,21 @@ export default function AmazonTool({ goBack }: any) {
             <button
               onClick={extract}
               disabled={loading}
-              className="
-                flex-1 py-3 rounded-xl 
-                bg-gradient-to-r from-blue-500 to-purple-500
-                hover:scale-[1.02] transition-all duration-300
-                disabled:opacity-50
-              "
+              className="flex-1 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-purple-500 hover:scale-[1.02] transition-all duration-300 disabled:opacity-50"
             >
               {loading ? "Processing..." : "Extract Images"}
             </button>
 
             <button
               onClick={reset}
-              className="
-                px-6 py-3 rounded-xl 
-                bg-white/5 border border-white/10
-                hover:bg-red-500/20 hover:border-red-400/30
-                transition-all duration-300
-              "
+              className="px-6 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-red-500/20 hover:border-red-400/30 transition-all duration-300"
             >
               Reset
             </button>
 
           </div>
 
-          {/* 🔥 PROGRESS BAR */}
+          {/* 🔥 PROGRESS */}
           {loading && (
             <div className="mt-5">
               <div className="w-full bg-white/10 rounded-full h-2">
@@ -167,16 +182,21 @@ export default function AmazonTool({ goBack }: any) {
             </div>
           )}
 
-          {/* 📦 DOWNLOAD BUTTON */}
+          {/* 📜 LOGS */}
+          {logs.length > 0 && (
+            <div className="mt-4 max-h-40 overflow-y-auto text-xs text-gray-400 bg-black/30 p-3 rounded">
+              {logs.map((log, i) => (
+                <div key={i}>{log}</div>
+              ))}
+            </div>
+          )}
+
+          {/* 📦 DOWNLOAD */}
           {downloadUrl && (
             <a
               href={downloadUrl}
               download="images.zip"
-              className="
-                mt-6 block text-center py-3 rounded-xl
-                bg-green-500 hover:bg-green-600
-                transition
-              "
+              className="mt-6 block text-center py-3 rounded-xl bg-green-500 hover:bg-green-600 transition"
             >
               Download ZIP 📦
             </a>
@@ -185,7 +205,7 @@ export default function AmazonTool({ goBack }: any) {
         </div>
       </div>
 
-      {/* ⚡ FLOATING BUTTONS */}
+      {/* ⚡ FLOATING */}
       <div className="fixed right-6 bottom-10 flex flex-col gap-3">
 
         <button

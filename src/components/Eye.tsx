@@ -8,7 +8,7 @@ export default function Eye() {
 
   const [text, setText] = useState("try catching me 😈");
   const [canCatch, setCanCatch] = useState(false);
-  const [attempts, setAttempts] = useState(0);
+  const [, setAttempts] = useState(0);
 
   // 🔥 FULL TROLL LINES (UNCHANGED)
   const trollLines = [
