@@ -1,10 +1,14 @@
 from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
-import zipfile, os, time, requests, json, random, re
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+
+import zipfile, os, time, requests, json, random
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
-from urllib.parse import urlparse, parse_qs
 from bs4 import BeautifulSoup
+from urllib.parse import urlparse, parse_qs
 
 app = FastAPI()
 
@@ -20,27 +24,28 @@ app.add_middleware(
 class Data(BaseModel):
     links: list[str]
 
-# 🧹 delete zip later
+# ================= DELETE ZIP =================
 def delete_file(path: str):
     try:
         time.sleep(600)
         if os.path.exists(path):
             os.remove(path)
-    except:
-        pass
+            print("🧹 Deleted:", path)
+    except Exception as e:
+        print("❌ Delete error:", e)
 
 
-# ================= FLIPKART IMAGE (FAST, NO SELENIUM) =================
+# ================= FLIPKART IMAGE (UNCHANGED - SELENIUM) =================
 @app.post("/extract-live")
 def extract_live(data: Data, background_tasks: BackgroundTasks):
 
     def event_stream():
         os.makedirs("images", exist_ok=True)
 
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-            "Referer": "https://www.flipkart.com/"
-        }
+        chrome_options = Options()
+        chrome_options.add_argument("--headless=new")
+
+        driver = webdriver.Chrome(options=chrome_options)
 
         downloaded = []
         total = len(data.links)
@@ -49,23 +54,18 @@ def extract_live(data: Data, background_tasks: BackgroundTasks):
             try:
                 yield f"data: {json.dumps({'status': f'Processing {i+1}/{total}'})}\n\n"
 
-                r = requests.get(link, headers=headers, timeout=10)
-                soup = BeautifulSoup(r.text, "html.parser")
+                driver.get(link)
+                time.sleep(3)
 
-                img_url = None
+                img_url = driver.execute_script("""
+                    var meta = document.querySelector("meta[property='og:image']");
+                    return meta ? meta.content : null;
+                """)
 
-                # 🔥 extract from scripts (BEST)
-                for script in soup.find_all("script"):
-                    if script.string and "rukminim" in script.string:
-                        match = re.search(r'https://rukminim[^"]+', script.string)
-                        if match:
-                            img_url = match.group(0)
-                            break
-
-                # 🔥 fallback
                 if not img_url:
-                    for img in soup.find_all("img"):
-                        src = img.get("src")
+                    imgs = driver.find_elements(By.TAG_NAME, "img")
+                    for img in imgs:
+                        src = img.get_attribute("src")
                         if src and "rukminim" in src:
                             img_url = src
                             break
@@ -74,23 +74,18 @@ def extract_live(data: Data, background_tasks: BackgroundTasks):
                     filename = img_url.split("/")[-1].split("?")[0]
                     path = f"images/{filename}"
 
-                    img_res = requests.get(img_url, headers=headers, timeout=10)
-
+                    r = requests.get(img_url)
                     with open(path, "wb") as f:
-                        f.write(img_res.content)
+                        f.write(r.content)
 
                     downloaded.append(path)
 
                     yield f"data: {json.dumps({'status': f'Downloaded {filename}'})}\n\n"
-                else:
-                    yield f"data: {json.dumps({'status': 'Image not found'})}\n\n"
 
             except Exception as e:
                 yield f"data: {json.dumps({'status': str(e)})}\n\n"
 
-        if not downloaded:
-            yield f"data: {json.dumps({'status': 'No images found', 'done': True})}\n\n"
-            return
+        driver.quit()
 
         zip_path = f"images_{int(time.time())}.zip"
 
@@ -111,24 +106,11 @@ def extract_live(data: Data, background_tasks: BackgroundTasks):
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-# ================= DOWNLOAD =================
-@app.get("/download/{filename}")
-def download_file(filename: str):
-    if not os.path.exists(filename):
-        return {"error": "File not found"}
-
-    return FileResponse(
-        path=filename,
-        filename="images.zip",
-        media_type="application/zip"
-    )
-
-
-# ================= AMAZON IMAGE =================
+# ================= AMAZON =================
 USER_AGENTS = [
-"Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
-"Mozilla/5.0 (X11; Linux x86_64)"
+    "Mozilla/5.0",
+    "Mozilla/5.0 (Windows NT 10.0)",
+    "Mozilla/5.0 (X11; Linux x86_64)"
 ]
 
 def get_headers():
@@ -157,44 +139,31 @@ def extract_amazon(data: Data, background_tasks: BackgroundTasks):
         os.makedirs("images", exist_ok=True)
 
         downloaded = []
-        total = len(data.links)
 
-        for i, link in enumerate(data.links):
+        for link in data.links:
             try:
-                yield f"data: {json.dumps({'status': f'Processing {i+1}/{total}'})}\n\n"
-
                 asin = extract_asin(link)
-                if not asin:
-                    yield f"data: {json.dumps({'status': 'Invalid ASIN'})}\n\n"
-                    continue
 
                 url = f"https://www.amazon.in/dp/{asin}"
-                r = requests.get(url, headers=get_headers(), timeout=10)
+                r = requests.get(url, headers=get_headers())
 
                 soup = BeautifulSoup(r.text, "html.parser")
                 img = soup.select_one("#landingImage")
 
-                img_url = img.get("data-old-hires") if img else None
+                img_url = img.get("data-old-hires") or img.get("src")
 
-                if img_url:
-                    path = f"images/{asin}.jpg"
-                    img_res = requests.get(img_url, headers=get_headers(), timeout=10)
+                path = f"images/{asin}.jpg"
+                img_res = requests.get(img_url, headers=get_headers())
 
-                    with open(path, "wb") as f:
-                        f.write(img_res.content)
+                with open(path, "wb") as f:
+                    f.write(img_res.content)
 
-                    downloaded.append(path)
+                downloaded.append(path)
 
-                    yield f"data: {json.dumps({'status': f'Downloaded {asin}'})}\n\n"
-                else:
-                    yield f"data: {json.dumps({'status': 'Image not found'})}\n\n"
+                yield f"data: {json.dumps({'status': f'Downloaded {asin}'})}\n\n"
 
             except Exception as e:
                 yield f"data: {json.dumps({'status': str(e)})}\n\n"
-
-        if not downloaded:
-            yield f"data: {json.dumps({'status': 'No images found', 'done': True})}\n\n"
-            return
 
         zip_path = f"amazon_{int(time.time())}.zip"
 
@@ -203,10 +172,7 @@ def extract_amazon(data: Data, background_tasks: BackgroundTasks):
                 z.write(file, os.path.basename(file))
 
         for file in downloaded:
-            try:
-                os.remove(file)
-            except:
-                pass
+            os.remove(file)
 
         background_tasks.add_task(delete_file, zip_path)
 
@@ -215,21 +181,33 @@ def extract_amazon(data: Data, background_tasks: BackgroundTasks):
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-# ================= FIX LINK (FAST, NO SELENIUM) =================
+# ================= FIX LINK (🔥 FINAL FIXED) =================
 @app.post("/fix-flipkart-link")
 def fix_flipkart(data: Data):
 
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Referer": "https://www.flipkart.com/"
-    }
+    chrome_options = Options()
+    chrome_options.add_argument("--headless=new")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
+
+    driver = webdriver.Chrome(options=chrome_options)
 
     fixed_links = []
 
     for link in data.links:
         try:
-            r = requests.get(link, headers=headers, timeout=10)
-            final_url = r.url
+            driver.get(link)
+
+            # 🔥 wait for full redirect chain
+            time.sleep(4)
+
+            final_url = driver.current_url
+
+            # 🔥 FIX dlhttp bug
+            if "dlhttp" in final_url:
+                final_url = final_url.split("dlhttp")[-1]
+
+            final_url = final_url.replace("m.flipkart.com", "www.flipkart.com")
 
             pid = None
             if "pid=" in final_url:
@@ -243,49 +221,86 @@ def fix_flipkart(data: Data):
         except Exception as e:
             fixed_links.append(f"❌ Error: {str(e)}")
 
+    driver.quit()
+
     return {"fixed": fixed_links}
 
 
-# ================= FIND REVIEW (FAST, NO SELENIUM) =================
+# ================= FIND REVIEW =================
 @app.post("/find-review-page")
 def find_review(data: Data):
 
     base_url = data.links[0]
 
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
+    chrome_options = Options()
+    chrome_options.add_argument("--headless=new")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
 
-    def is_review(text):
-        text = text.lower()
-        return "review" in text or "ratings & reviews" in text
+    driver = webdriver.Chrome(options=chrome_options)
+
+    def is_review_page():
+        try:
+            body = driver.page_source.lower()
+
+            return (
+                 "customer review" in body
+            )
+        except:
+            return False
 
     found_url = None
 
+    # 🔥 PHASE 1 (1 → 100)
     for i in range(1, 101):
         try:
             url = f"{base_url}:{i}"
-            r = requests.get(url, headers=headers, timeout=8)
 
-            if is_review(r.text):
+            driver.get(url)
+
+            # 🔥 WAIT FOR LOAD (IMPORTANT)
+            time.sleep(3)
+
+            if is_review_page():
                 found_url = url
                 break
+
         except:
             pass
 
+    # 🔥 PHASE 2 (100 → 1000 jump)
     if not found_url:
         for i in range(100, 1001, 100):
             try:
                 url = f"{base_url}:{i}"
-                r = requests.get(url, headers=headers, timeout=8)
 
-                if is_review(r.text):
+                driver.get(url)
+                time.sleep(3)
+
+                if is_review_page():
                     found_url = url
                     break
+
             except:
                 pass
+
+    driver.quit()
 
     if found_url:
         return {"found": True, "url": found_url}
     else:
         return {"found": False}
+
+
+# ================= DOWNLOAD =================
+@app.get("/download/{filename}")
+def download_file(filename: str):
+
+    if not os.path.exists(filename):
+        return {"error": "File not found"}
+
+    return FileResponse(
+        path=filename,
+        filename="images.zip",
+        media_type="application/zip"
+    )
