@@ -74,6 +74,8 @@ export default function FlipkartTool({ goBack }: any) {
                 if (data.filename) {
                 const zipUrl = `http://178.104.72.19:8000/download/${data.filename}`;
                 setDownloadUrl(zipUrl);
+                } else {
+                  alert("No images found ❌");
                 }
               }
 

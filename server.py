@@ -51,30 +51,16 @@ def extract_flipkart(data: LinkInput):
                 pass
 
         if not images:
-            yield f"data: {{\"status\": \"No images found ❌\"}}\n\n"
-            yield f"data: {{\"done\": true}}\n\n"
-            return
+    zip_name = f"empty_{int(time.time())}.zip"
+    zip_path = f"/root/govindamlabs/{zip_name}"
 
-        zip_name = f"images_{int(time.time())}.zip"
-        zip_path = f"/root/govindamlabs/{zip_name}"
+    with zipfile.ZipFile(zip_path, "w") as z:
+        pass
 
-        with zipfile.ZipFile(zip_path, "w") as z:
-            for i, img in enumerate(images):
-                try:
-                    img_data = requests.get(img).content
-                    file_name = f"{i}.jpg"
-                    with open(file_name, "wb") as f:
-                        f.write(img_data)
-                    z.write(file_name)
-                    os.remove(file_name)
-                except:
-                    pass
+    auto_delete(zip_path)
 
-        auto_delete(zip_path)
-
-        yield f"data: {{\"status\": \"Done\", \"filename\": \"{zip_name}\", \"done\": true}}\n\n"
-
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    yield f"data: {{\"status\": \"No images found ❌\", \"filename\": \"{zip_name}\", \"done\": true}}\n\n"
+    return
 
 
 # ---------- AMAZON IMAGE ----------
@@ -98,31 +84,18 @@ def extract_amazon(data: LinkInput):
             except:
                 pass
 
-        if not images:
-            yield f"data: {{\"status\": \"No images found ❌\"}}\n\n"
-            yield f"data: {{\"done\": true}}\n\n"
-            return
+        # ---------- FLIPKART ----------
+    if not images:
+    zip_name = f"empty_{int(time.time())}.zip"
+    zip_path = f"/root/govindamlabs/{zip_name}"
 
-        zip_name = f"amazon_{int(time.time())}.zip"
-        zip_path = f"/root/govindamlabs/{zip_name}"
+    with zipfile.ZipFile(zip_path, "w") as z:
+        pass
 
-        with zipfile.ZipFile(zip_path, "w") as z:
-            for i, img in enumerate(images):
-                try:
-                    img_data = requests.get(img).content
-                    file_name = f"{i}.jpg"
-                    with open(file_name, "wb") as f:
-                        f.write(img_data)
-                    z.write(file_name)
-                    os.remove(file_name)
-                except:
-                    pass
+    auto_delete(zip_path)
 
-        auto_delete(zip_path)
-
-        yield f"data: {{\"status\": \"Done\", \"filename\": \"{zip_name}\", \"done\": true}}\n\n"
-
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    yield f"data: {{\"status\": \"No images found ❌\", \"filename\": \"{zip_name}\", \"done\": true}}\n\n"
+    return
 
 
 # ---------- FIX LINK ----------
