@@ -51,7 +51,8 @@ def extract_flipkart(data: LinkInput):
                 pass
 
         if not images:
-            yield f"data: {{\"status\": \"No images\", \"done\": true}}\n\n"
+            yield f"data: {{\"status\": \"No images found ❌\"}}\n\n"
+            yield f"data: {{\"done\": true}}\n\n"
             return
 
         zip_name = f"images_{int(time.time())}.zip"
@@ -89,7 +90,7 @@ def extract_amazon(data: LinkInput):
                 html = requests.get(link, headers={"User-Agent": "Mozilla/5.0"}).text
 
                 # ✅ LARGE IMAGE ONLY
-                matches = re.findall(r'"large":"(https://[^"]+)"', html)
+                matches = re.findall(r'https://m\.media-amazon\.com/images/I/[^\"]+', html)
 
                 if matches:
                     images.append(matches[0])
@@ -98,7 +99,8 @@ def extract_amazon(data: LinkInput):
                 pass
 
         if not images:
-            yield f"data: {{\"status\": \"No images\", \"done\": true}}\n\n"
+            yield f"data: {{\"status\": \"No images found ❌\"}}\n\n"
+            yield f"data: {{\"done\": true}}\n\n"
             return
 
         zip_name = f"amazon_{int(time.time())}.zip"
@@ -165,7 +167,7 @@ def find_review(data: LinkInput):
                 url = f"https://www.flipkart.com/reviews/{pid}:{i}"
                 html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).text
 
-                time.sleep(1.5)
+                time.sleep(2)
 
                 if "customer review" in html.lower() or "ratings & reviews" in html.lower():
                     return {"url": url}
@@ -175,7 +177,7 @@ def find_review(data: LinkInput):
                 url = f"https://www.flipkart.com/reviews/{pid}:{i}"
                 html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).text
 
-                time.sleep(1.5)
+                time.sleep(2)
 
                 if "customer review" in html.lower() or "ratings & reviews" in html.lower():
                     return {"url": url}
