@@ -130,12 +130,22 @@ def fix_link(data: LinkInput):
     fixed = []
 
     for link in data.links:
-        match = re.search(r'pid=([A-Z0-9]+)', link)
-        if match:
-            pid = match.group(1)
-            fixed.append(f"https://www.flipkart.com/reviews/{pid}")
-        else:
-            fixed.append("❌ PID not found")
+        try:
+            # 🔥 STEP 1: resolve short link
+            res = requests.get(link, allow_redirects=True, headers={"User-Agent": "Mozilla/5.0"})
+            final_url = res.url
+
+            # 🔥 STEP 2: extract PID
+            match = re.search(r'pid=([A-Z0-9]+)', final_url)
+
+            if match:
+                pid = match.group(1)
+                fixed.append(f"https://www.flipkart.com/reviews/{pid}")
+            else:
+                fixed.append("❌ PID not found")
+
+        except:
+            fixed.append("❌ Error")
 
     return {"fixed": fixed}
 
@@ -155,12 +165,16 @@ def find_review(data: LinkInput):
                 url = f"https://www.flipkart.com/reviews/{pid}:{i}"
                 html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).text
 
+                time.sleep(1.5)  # 🔥 ADD THIS
+
                 if "customer review" in html.lower() or "ratings & reviews" in html.lower():
                     return {"url": url}
 
             for i in range(100, 1100, 100):
                 url = f"https://www.flipkart.com/reviews/{pid}:{i}"
                 html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).text
+
+                time.sleep(1.5)  # 🔥 ADD THIS
 
                 if "customer review" in html.lower() or "ratings & reviews" in html.lower():
                     return {"url": url}

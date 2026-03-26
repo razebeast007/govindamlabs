@@ -75,7 +75,7 @@ export default function AmazonTool({ goBack }: any) {
 
                 setProgress(100);
 
-                const zipUrl = `http://178.104.72.19:8000/download/${data.zip}`;
+                const zipUrl = `http://178.104.72.19:8000/download/${data.filename}`;
                 setDownloadUrl(zipUrl);
               }
 

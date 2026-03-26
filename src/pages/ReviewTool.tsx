@@ -27,7 +27,7 @@ export default function ReviewTool({ goBack }: any) {
 
       const data = await res.json();
 
-      if (data.found) {
+      if (data.url) {
         setReviewUrl(data.url);
       }
  
