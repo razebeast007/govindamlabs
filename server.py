@@ -1,213 +1,122 @@
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
-import requests, re, os, zipfile, time, threading
-from fastapi.middleware.cors import CORSMiddleware
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+import requests
+import os
+import time
+import zipfile
+import uuid
+import json
 
 app = FastAPI()
 
-# ✅ CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-class LinkInput(BaseModel):
+# -------- REQUEST MODEL --------
+class LinkRequest(BaseModel):
     links: list[str]
 
-# ---------- AUTO DELETE ----------
-def auto_delete(path):
-    def delete():
-        time.sleep(600)
-        if os.path.exists(path):
-            os.remove(path)
-    threading.Thread(target=delete).start()
+# -------- SELENIUM --------
+def create_driver():
+    chrome_options = Options()
+    chrome_options.add_argument("--headless=new")
+    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
 
-# ---------- FLIPKART IMAGE ----------
-@app.post("/extract-live")
-def extract_flipkart(data: LinkInput):
+    return webdriver.Chrome(options=chrome_options)
 
-    def event_stream():
-        images = []
+# -------- DOWNLOAD --------
+def download_image(url, folder):
+    try:
+        r = requests.get(url, stream=True, timeout=20)
+        filename = url.split("/")[-1].split("?")[0]
 
-        for i, link in enumerate(data.links):
-            yield f"data: {{\"status\": \"Processing {i+1}/{len(data.links)}\"}}\n\n"
+        path = os.path.join(folder, filename)
+        with open(path, "wb") as f:
+            for chunk in r.iter_content(1024):
+                if chunk:
+                    f.write(chunk)
 
-            try:
-                html = requests.get(link, headers={"User-Agent": "Mozilla/5.0"}).text
+        return filename
+    except:
+        return None
 
-                matches = re.findall(r'https://rukminim[^\"]+?\.(?:jpeg|jpg)', html)
+# -------- SSE GENERATOR --------
+def event_stream(links):
+    driver = create_driver()
 
-                if matches:
-                    img = matches[0]
-                    if "?q=" not in img:
-                        img += "?q=90"
-                    images.append(img)
+    folder = f"images_{uuid.uuid4().hex}"
+    os.makedirs(folder, exist_ok=True)
 
-            except:
-                pass
+    downloaded_files = []
 
-        # ❌ NO IMAGES → EMPTY ZIP
-        if not images:
-            zip_name = f"empty_{int(time.time())}.zip"
-            zip_path = f"/root/govindamlabs/{zip_name}"
+    total = len(links)
+    count = 0
 
-            with zipfile.ZipFile(zip_path, "w") as z:
-                pass
+    for link in links:
+        count += 1
 
-            auto_delete(zip_path)
-
-            yield f"data: {{\"status\": \"No images ❌\", \"filename\": \"{zip_name}\", \"done\": true}}\n\n"
-            return
-
-        # ✅ CREATE ZIP
-        zip_name = f"images_{int(time.time())}.zip"
-        zip_path = f"/root/govindamlabs/{zip_name}"
-
-        with zipfile.ZipFile(zip_path, "w") as z:
-            for i, img in enumerate(images):
-                try:
-                    img_data = requests.get(img).content
-                    file_name = f"{i}.jpg"
-
-                    with open(file_name, "wb") as f:
-                        f.write(img_data)
-
-                    z.write(file_name)
-                    os.remove(file_name)
-                except:
-                    pass
-
-        auto_delete(zip_path)
-
-        yield f"data: {{\"status\": \"Done\", \"filename\": \"{zip_name}\", \"done\": true}}\n\n"
-
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
-
-
-# ---------- AMAZON IMAGE ----------
-@app.post("/extract-amazon-live")
-def extract_amazon(data: LinkInput):
-
-    def event_stream():
-        images = []
-
-        for i, link in enumerate(data.links):
-            yield f"data: {{\"status\": \"Processing {i+1}/{len(data.links)}\"}}\n\n"
-
-            try:
-                html = requests.get(link, headers={"User-Agent": "Mozilla/5.0"}).text
-
-                matches = re.findall(r'https://m\.media-amazon\.com/images/I/[^\"]+', html)
-
-                if matches:
-                    images.append(matches[0])
-
-            except:
-                pass
-
-        # ❌ NO IMAGES
-        if not images:
-            zip_name = f"empty_{int(time.time())}.zip"
-            zip_path = f"/root/govindamlabs/{zip_name}"
-
-            with zipfile.ZipFile(zip_path, "w") as z:
-                pass
-
-            auto_delete(zip_path)
-
-            yield f"data: {{\"status\": \"No images ❌\", \"filename\": \"{zip_name}\", \"done\": true}}\n\n"
-            return
-
-        # ✅ CREATE ZIP
-        zip_name = f"amazon_{int(time.time())}.zip"
-        zip_path = f"/root/govindamlabs/{zip_name}"
-
-        with zipfile.ZipFile(zip_path, "w") as z:
-            for i, img in enumerate(images):
-                try:
-                    img_data = requests.get(img).content
-                    file_name = f"{i}.jpg"
-
-                    with open(file_name, "wb") as f:
-                        f.write(img_data)
-
-                    z.write(file_name)
-                    os.remove(file_name)
-                except:
-                    pass
-
-        auto_delete(zip_path)
-
-        yield f"data: {{\"status\": \"Done\", \"filename\": \"{zip_name}\", \"done\": true}}\n\n"
-
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
-
-
-# ---------- FIX LINK ----------
-@app.post("/fix-flipkart-link")
-def fix_link(data: LinkInput):
-    fixed = []
-
-    for link in data.links:
         try:
-            res = requests.get(link, allow_redirects=True, headers={"User-Agent": "Mozilla/5.0"})
-            final_text = res.text + res.url
+            yield f"data: {json.dumps({'status': f'Processing {count}/{total}'})}\n\n"
 
-            match = re.search(r'pid=([A-Z0-9]+)', final_text)
+            driver.get(link)
+            time.sleep(5)
 
-            if match:
-                pid = match.group(1)
-                fixed.append(f"https://www.flipkart.com/reviews/{pid}")
+            # og:image
+            img_url = driver.execute_script("""
+                var meta = document.querySelector("meta[property='og:image']");
+                return meta ? meta.content : null;
+            """)
+
+            # backup
+            if not img_url:
+                imgs = driver.find_elements(By.TAG_NAME, "img")
+                for img in imgs:
+                    src = img.get_attribute("src")
+                    if src and "rukminim" in src:
+                        img_url = src
+                        break
+
+            if img_url:
+                file = download_image(img_url, folder)
+                if file:
+                    downloaded_files.append(os.path.join(folder, file))
+                    yield f"data: {json.dumps({'status': 'Image downloaded'})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'status': 'Download failed'})}\n\n"
             else:
-                fixed.append("❌ PID not found")
+                yield f"data: {json.dumps({'status': 'Image not found'})}\n\n"
 
-        except:
-            fixed.append("❌ Error")
+        except Exception as e:
+            yield f"data: {json.dumps({'status': f'Error: {str(e)}'})}\n\n"
 
-    return {"fixed": fixed}
+        time.sleep(2)
 
+    driver.quit()
 
-# ---------- REVIEW FINDER ----------
-@app.post("/find-review-page")
-def find_review(data: LinkInput):
-    for link in data.links:
-        try:
-            match = re.search(r'/reviews/([A-Z0-9]+)', link)
-            if not match:
-                continue
+    # -------- ZIP --------
+    zip_name = f"{folder}.zip"
 
-            pid = match.group(1)
+    with zipfile.ZipFile(zip_name, "w") as zipf:
+        for file in downloaded_files:
+            zipf.write(file, os.path.basename(file))
 
-            for i in range(1, 101):
-                url = f"https://www.flipkart.com/reviews/{pid}:{i}"
-                html = requests.get(url).text
-                time.sleep(2)
-
-                if "customer review" in html.lower():
-                    return {"url": url}
-
-            for i in range(100, 1100, 100):
-                url = f"https://www.flipkart.com/reviews/{pid}:{i}"
-                html = requests.get(url).text
-                time.sleep(2)
-
-                if "customer review" in html.lower():
-                    return {"url": url}
-
-        except:
-            pass
-
-    return {"error": "No review found"}
+    yield f"data: {json.dumps({'done': True, 'filename': zip_name})}\n\n"
 
 
-# ---------- DOWNLOAD ----------
+# -------- API --------
+@app.post("/extract-live")
+async def extract_live(data: LinkRequest):
+    return StreamingResponse(event_stream(data.links), media_type="text/event-stream")
+
+
+# -------- DOWNLOAD --------
 @app.get("/download/{filename}")
-def download(filename: str):
-    path = f"/root/govindamlabs/{filename}"
-    if os.path.exists(path):
-        return FileResponse(path, filename=filename)
-    return {"error": "File not found"}
+def download_file(filename: str):
+    return FileResponse(
+        path=filename,
+        filename=filename,
+        media_type="application/zip"
+    )
