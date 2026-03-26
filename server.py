@@ -51,16 +51,16 @@ def extract_flipkart(data: LinkInput):
                 pass
 
         if not images:
-    zip_name = f"empty_{int(time.time())}.zip"
-    zip_path = f"/root/govindamlabs/{zip_name}"
+        zip_name = f"empty_{int(time.time())}.zip"
+        zip_path = f"/root/govindamlabs/{zip_name}"
 
-    with zipfile.ZipFile(zip_path, "w") as z:
+        with zipfile.ZipFile(zip_path, "w") as z:
         pass
 
-    auto_delete(zip_path)
+        auto_delete(zip_path)
 
-    yield f"data: {{\"status\": \"No images found ❌\", \"filename\": \"{zip_name}\", \"done\": true}}\n\n"
-    return
+        yield f"data: {{\"status\": \"No images found ❌\", \"filename\": \"{zip_name}\", \"done\": true}}\n\n"
+        return
 
 
 # ---------- AMAZON IMAGE ----------
@@ -85,17 +85,17 @@ def extract_amazon(data: LinkInput):
                 pass
 
         # ---------- FLIPKART ----------
-    if not images:
-    zip_name = f"empty_{int(time.time())}.zip"
-    zip_path = f"/root/govindamlabs/{zip_name}"
+      if not images:
+      zip_name = f"empty_{int(time.time())}.zip"
+      zip_path = f"/root/govindamlabs/{zip_name}"
 
-    with zipfile.ZipFile(zip_path, "w") as z:
-        pass
+      with zipfile.ZipFile(zip_path, "w") as z:
+      pass
 
-    auto_delete(zip_path)
+      auto_delete(zip_path)
 
-    yield f"data: {{\"status\": \"No images found ❌\", \"filename\": \"{zip_name}\", \"done\": true}}\n\n"
-    return
+      yield f"data: {{\"status\": \"No images found ❌\", \"filename\": \"{zip_name}\", \"done\": true}}\n\n"
+      return
 
 
 # ---------- FIX LINK ----------
