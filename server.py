@@ -1,14 +1,12 @@
 from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
-import zipfile, os, time, requests, json, random
+import zipfile, os, time, requests, json
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from bs4 import BeautifulSoup
-from urllib.parse import urlparse, parse_qs
 
 app = FastAPI()
 
-# ✅ CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,27 +18,25 @@ app.add_middleware(
 class Data(BaseModel):
     links: list[str]
 
-# ================= DELETE ZIP =================
-def delete_file(path: str):
-    try:
-        time.sleep(600)
-        if os.path.exists(path):
-            os.remove(path)
-    except:
-        pass
 
-# ================= HEADERS =================
+# 🔥 HEADERS (important)
 def get_headers():
     return {
-        "User-Agent": "Mozilla/5.0 (Linux; Android 10; Mobile)",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
         "Accept-Language": "en-US,en;q=0.9",
-        "Referer": "https://www.flipkart.com/",
-        "Connection": "keep-alive"
     }
+
+
+# 🧹 AUTO DELETE ZIP (10 min)
+def delete_file(path: str):
+    time.sleep(600)
+    if os.path.exists(path):
+        os.remove(path)
+
 
 # ================= FLIPKART IMAGE =================
 @app.post("/extract-live")
-def extract_live(data: Data, background_tasks: BackgroundTasks):
+def extract_flipkart(data: Data, background_tasks: BackgroundTasks):
 
     def event_stream():
         os.makedirs("images", exist_ok=True)
@@ -52,26 +48,11 @@ def extract_live(data: Data, background_tasks: BackgroundTasks):
             try:
                 yield f"data: {json.dumps({'status': f'Processing {i+1}/{total}'})}\n\n"
 
-                final_url = None
+                # 🔥 resolve short link
+                r = requests.get(link, headers=get_headers(), allow_redirects=True, timeout=20)
+                final_url = r.url
 
-                # 🔥 retry
-                for _ in range(3):
-                    try:
-                        r = requests.get(link, headers=get_headers(), allow_redirects=True, timeout=20)
-                        final_url = r.url
-                        break
-                    except:
-                        time.sleep(2)
-
-                if not final_url:
-                    continue
-
-                if "dlhttp" in final_url:
-                    final_url = final_url.split("dlhttp")[-1]
-
-                final_url = final_url.replace("m.flipkart.com", "www.flipkart.com")
-
-                # PID
+                # 🔥 PID extract
                 pid = None
                 if "pid=" in final_url:
                     pid = final_url.split("pid=")[1].split("&")[0]
@@ -79,38 +60,33 @@ def extract_live(data: Data, background_tasks: BackgroundTasks):
                 if not pid:
                     continue
 
-                # 🔥 page fetch
+                # 🔥 page load
                 page = requests.get(final_url, headers=get_headers(), timeout=20)
                 soup = BeautifulSoup(page.text, "html.parser")
 
-                img_url = None
+                # 🔥 BEST METHOD (og:image)
+                meta = soup.find("meta", property="og:image")
+                if not meta:
+                    continue
 
-                # 🔥 main image
-                img = soup.find("img", {"class": "_396cs4"})
-                if img:
-                    img_url = img.get("src")
+                img_url = meta.get("content")
 
-                # 🔥 fallback
-                if not img_url:
-                    meta = soup.find("meta", property="og:image")
-                    if meta:
-                        img_url = meta.get("content")
+                # 🔥 ensure high quality
+                if "q=" in img_url:
+                    img_url = img_url.split("?")[0]
 
-                # 🔥 filter logo
-                if img_url and "rukminim" not in img_url:
-                    img_url = None
+                img_url = img_url + "?q=90"
 
-                if img_url:
-                    filename = f"{pid}.jpg"
-                    path = f"images/{filename}"
+                # 🔥 download
+                path = f"images/{pid}.jpg"
 
-                    img_res = requests.get(img_url, timeout=20)
-                    with open(path, "wb") as f:
-                        f.write(img_res.content)
+                img_res = requests.get(img_url, timeout=20)
+                with open(path, "wb") as f:
+                    f.write(img_res.content)
 
-                    downloaded.append(path)
+                downloaded.append(path)
 
-                    yield f"data: {json.dumps({'status': f'Downloaded {filename}'})}\n\n"
+                yield f"data: {json.dumps({'status': f'Downloaded {pid}'})}\n\n"
 
             except Exception as e:
                 yield f"data: {json.dumps({'status': str(e)})}\n\n"
@@ -119,17 +95,16 @@ def extract_live(data: Data, background_tasks: BackgroundTasks):
             yield f"data: {json.dumps({'status': 'No images', 'done': True})}\n\n"
             return
 
-        zip_path = f"images_{int(time.time())}.zip"
+        # 📦 ZIP
+        zip_path = f"flipkart_{int(time.time())}.zip"
 
         with zipfile.ZipFile(zip_path, 'w') as z:
             for file in downloaded:
                 z.write(file, os.path.basename(file))
 
+        # 🧹 cleanup images
         for file in downloaded:
-            try:
-                os.remove(file)
-            except:
-                pass
+            os.remove(file)
 
         background_tasks.add_task(delete_file, zip_path)
 
@@ -137,12 +112,8 @@ def extract_live(data: Data, background_tasks: BackgroundTasks):
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
-# ================= AMAZON =================
-def extract_asin(link):
-    if "/dp/" in link:
-        return link.split("/dp/")[1].split("/")[0]
-    return None
 
+# ================= AMAZON =================
 @app.post("/extract-amazon-live")
 def extract_amazon(data: Data, background_tasks: BackgroundTasks):
 
@@ -152,9 +123,7 @@ def extract_amazon(data: Data, background_tasks: BackgroundTasks):
 
         for link in data.links:
             try:
-                asin = extract_asin(link)
-                if not asin:
-                    continue
+                asin = link.split("/dp/")[1].split("/")[0]
 
                 url = f"https://www.amazon.in/dp/{asin}"
 
@@ -188,10 +157,7 @@ def extract_amazon(data: Data, background_tasks: BackgroundTasks):
                 z.write(file, os.path.basename(file))
 
         for file in downloaded:
-            try:
-                os.remove(file)
-            except:
-                pass
+            os.remove(file)
 
         background_tasks.add_task(delete_file, zip_path)
 
@@ -199,32 +165,17 @@ def extract_amazon(data: Data, background_tasks: BackgroundTasks):
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
+
 # ================= FIX LINK =================
 @app.post("/fix-flipkart-link")
-def fix_flipkart(data: Data):
+def fix_link(data: Data):
 
     fixed_links = []
 
     for link in data.links:
         try:
-            final_url = None
-
-            for _ in range(3):
-                try:
-                    r = requests.get(link, headers=get_headers(), allow_redirects=True, timeout=20)
-                    final_url = r.url
-                    break
-                except:
-                    time.sleep(2)
-
-            if not final_url:
-                fixed_links.append("❌ Timeout")
-                continue
-
-            if "dlhttp" in final_url:
-                final_url = final_url.split("dlhttp")[-1]
-
-            final_url = final_url.replace("m.flipkart.com", "www.flipkart.com")
+            r = requests.get(link, headers=get_headers(), allow_redirects=True, timeout=20)
+            final_url = r.url
 
             pid = None
             if "pid=" in final_url:
@@ -240,30 +191,33 @@ def fix_flipkart(data: Data):
 
     return {"fixed": fixed_links}
 
+
 # ================= FIND REVIEW =================
 @app.post("/find-review-page")
 def find_review(data: Data):
 
-    base_url = data.links[0]
+    base = data.links[0]
 
+    # 🔥 1 to 100
     for i in range(1, 101):
         try:
-            url = f"{base_url}:{i}"
+            url = f"{base}:{i}"
             r = requests.get(url, headers=get_headers(), timeout=20)
 
-            time.sleep(2)
+            time.sleep(1)
 
             if "customer review" in r.text.lower():
                 return {"found": True, "url": url}
         except:
             pass
 
+    # 🔥 100 jumps
     for i in range(100, 1001, 100):
         try:
-            url = f"{base_url}:{i}"
+            url = f"{base}:{i}"
             r = requests.get(url, headers=get_headers(), timeout=20)
 
-            time.sleep(2)
+            time.sleep(1)
 
             if "customer review" in r.text.lower():
                 return {"found": True, "url": url}
@@ -271,6 +225,7 @@ def find_review(data: Data):
             pass
 
     return {"found": False}
+
 
 # ================= DOWNLOAD =================
 @app.get("/download/{filename}")
