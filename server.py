@@ -1,9 +1,5 @@
 from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-
 import zipfile, os, time, requests, json, random
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -30,22 +26,24 @@ def delete_file(path: str):
         time.sleep(600)
         if os.path.exists(path):
             os.remove(path)
-            print("🧹 Deleted:", path)
-    except Exception as e:
-        print("❌ Delete error:", e)
+    except:
+        pass
 
 
-# ================= FLIPKART IMAGE (UNCHANGED - SELENIUM) =================
+# ================= HEADERS =================
+def get_headers():
+    return {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+
+
+# ================= FLIPKART IMAGE (FAST FIXED) =================
 @app.post("/extract-live")
 def extract_live(data: Data, background_tasks: BackgroundTasks):
 
     def event_stream():
         os.makedirs("images", exist_ok=True)
-
-        chrome_options = Options()
-        chrome_options.add_argument("--headless=new")
-
-        driver = webdriver.Chrome(options=chrome_options)
 
         downloaded = []
         total = len(data.links)
@@ -54,29 +52,31 @@ def extract_live(data: Data, background_tasks: BackgroundTasks):
             try:
                 yield f"data: {json.dumps({'status': f'Processing {i+1}/{total}'})}\n\n"
 
-                driver.get(link)
-                time.sleep(3)
+                r = requests.get(link, headers=get_headers(), allow_redirects=True, timeout=10)
+                final_url = r.url
 
-                img_url = driver.execute_script("""
-                    var meta = document.querySelector("meta[property='og:image']");
-                    return meta ? meta.content : null;
-                """)
+                # PID extract
+                pid = None
+                if "pid=" in final_url:
+                    pid = final_url.split("pid=")[1].split("&")[0]
 
-                if not img_url:
-                    imgs = driver.find_elements(By.TAG_NAME, "img")
-                    for img in imgs:
-                        src = img.get_attribute("src")
-                        if src and "rukminim" in src:
-                            img_url = src
-                            break
+                if not pid:
+                    continue
+
+                # OG image fetch
+                page = requests.get(final_url, headers=get_headers())
+                soup = BeautifulSoup(page.text, "html.parser")
+
+                meta = soup.find("meta", property="og:image")
+                img_url = meta["content"] if meta else None
 
                 if img_url:
-                    filename = img_url.split("/")[-1].split("?")[0]
+                    filename = f"{pid}.jpg"
                     path = f"images/{filename}"
 
-                    r = requests.get(img_url)
+                    img_res = requests.get(img_url)
                     with open(path, "wb") as f:
-                        f.write(r.content)
+                        f.write(img_res.content)
 
                     downloaded.append(path)
 
@@ -85,7 +85,9 @@ def extract_live(data: Data, background_tasks: BackgroundTasks):
             except Exception as e:
                 yield f"data: {json.dumps({'status': str(e)})}\n\n"
 
-        driver.quit()
+        if not downloaded:
+            yield f"data: {json.dumps({'status': 'No images', 'done': True})}\n\n"
+            return
 
         zip_path = f"images_{int(time.time())}.zip"
 
@@ -94,10 +96,7 @@ def extract_live(data: Data, background_tasks: BackgroundTasks):
                 z.write(file, os.path.basename(file))
 
         for file in downloaded:
-            try:
-                os.remove(file)
-            except:
-                pass
+            os.remove(file)
 
         background_tasks.add_task(delete_file, zip_path)
 
@@ -107,54 +106,32 @@ def extract_live(data: Data, background_tasks: BackgroundTasks):
 
 
 # ================= AMAZON =================
-USER_AGENTS = [
-    "Mozilla/5.0",
-    "Mozilla/5.0 (Windows NT 10.0)",
-    "Mozilla/5.0 (X11; Linux x86_64)"
-]
-
-def get_headers():
-    return {
-        "User-Agent": random.choice(USER_AGENTS),
-        "Referer": "https://www.amazon.in/"
-    }
-
 def extract_asin(link):
-    if len(link) == 10 and link.isalnum():
-        return link
     if "/dp/" in link:
         return link.split("/dp/")[1].split("/")[0]
-    if "/gp/product/" in link:
-        return link.split("/gp/product/")[1].split("/")[0]
-
-    parsed = urlparse(link)
-    params = parse_qs(parsed.query)
-    return params.get("field-asin", [None])[0]
-
+    return None
 
 @app.post("/extract-amazon-live")
 def extract_amazon(data: Data, background_tasks: BackgroundTasks):
 
     def event_stream():
         os.makedirs("images", exist_ok=True)
-
         downloaded = []
 
         for link in data.links:
             try:
                 asin = extract_asin(link)
-
                 url = f"https://www.amazon.in/dp/{asin}"
+
                 r = requests.get(url, headers=get_headers())
-
                 soup = BeautifulSoup(r.text, "html.parser")
-                img = soup.select_one("#landingImage")
 
+                img = soup.select_one("#landingImage")
                 img_url = img.get("data-old-hires") or img.get("src")
 
                 path = f"images/{asin}.jpg"
-                img_res = requests.get(img_url, headers=get_headers())
 
+                img_res = requests.get(img_url)
                 with open(path, "wb") as f:
                     f.write(img_res.content)
 
@@ -181,33 +158,16 @@ def extract_amazon(data: Data, background_tasks: BackgroundTasks):
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-# ================= FIX LINK (🔥 FINAL FIXED) =================
+# ================= FIX LINK (🔥 FAST NO SELENIUM) =================
 @app.post("/fix-flipkart-link")
 def fix_flipkart(data: Data):
-
-    chrome_options = Options()
-    chrome_options.add_argument("--headless=new")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--no-sandbox")
-
-    driver = webdriver.Chrome(options=chrome_options)
 
     fixed_links = []
 
     for link in data.links:
         try:
-            driver.get(link)
-
-            # 🔥 wait for full redirect chain
-            time.sleep(4)
-
-            final_url = driver.current_url
-
-            # 🔥 FIX dlhttp bug
-            if "dlhttp" in final_url:
-                final_url = final_url.split("dlhttp")[-1]
-
-            final_url = final_url.replace("m.flipkart.com", "www.flipkart.com")
+            r = requests.get(link, headers=get_headers(), allow_redirects=True, timeout=10)
+            final_url = r.url
 
             pid = None
             if "pid=" in final_url:
@@ -219,77 +179,40 @@ def fix_flipkart(data: Data):
                 fixed_links.append("❌ PID not found")
 
         except Exception as e:
-            fixed_links.append(f"❌ Error: {str(e)}")
-
-    driver.quit()
+            fixed_links.append(f"❌ {str(e)}")
 
     return {"fixed": fixed_links}
 
 
-# ================= FIND REVIEW =================
+# ================= FIND REVIEW (🔥 FAST NO SELENIUM) =================
 @app.post("/find-review-page")
 def find_review(data: Data):
 
     base_url = data.links[0]
 
-    chrome_options = Options()
-    chrome_options.add_argument("--headless=new")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--no-sandbox")
+    headers = get_headers()
 
-    driver = webdriver.Chrome(options=chrome_options)
-
-    def is_review_page():
-        try:
-            body = driver.page_source.lower()
-
-            return (
-                 "customer review" in body
-            )
-        except:
-            return False
-
-    found_url = None
-
-    # 🔥 PHASE 1 (1 → 100)
+    # Phase 1
     for i in range(1, 101):
-        try:
-            url = f"{base_url}:{i}"
+        url = f"{base_url}:{i}"
+        r = requests.get(url, headers=headers)
 
-            driver.get(url)
+        if "customer review" in r.text.lower():
+            return {"found": True, "url": url}
 
-            # 🔥 WAIT FOR LOAD (IMPORTANT)
-            time.sleep(3)
+        time.sleep(1)
 
-            if is_review_page():
-                found_url = url
-                break
+    # Phase 2
+    for i in range(100, 1001, 100):
+        url = f"{base_url}:{i}"
+        r = requests.get(url, headers=headers)
 
-        except:
-            pass
+        if "customer review" in r.text.lower():
+            return {"found": True, "url": url}
 
-    # 🔥 PHASE 2 (100 → 1000 jump)
-    if not found_url:
-        for i in range(100, 1001, 100):
-            try:
-                url = f"{base_url}:{i}"
+        time.sleep(1)
 
-                driver.get(url)
-                time.sleep(3)
-
-                if is_review_page():
-                    found_url = url
-                    break
-
-            except:
-                pass
-
-    driver.quit()
-
-    if found_url:
-        return {"found": True, "url": found_url}
-    else:
-        return {"found": False}
+    return {"found": False}
 
 
 # ================= DOWNLOAD =================
