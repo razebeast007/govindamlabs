@@ -24,7 +24,7 @@ export default function FlipkartTool({ goBack }: any) {
     setDownloadUrl(null);
 
     try {
-      const response = await fetch("https://govindamlabs.onrender.com/extract-live", {
+      const response = await fetch("http://178.104.72.19:8000/extract-live", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -74,7 +74,7 @@ export default function FlipkartTool({ goBack }: any) {
 
                 setProgress(100);
 
-                const zipUrl = `https://govindamlabs.onrender.com/download/${data.zip}`;
+                const zipUrl = `http://178.104.72.19:8000/download/${data.zip}`;
                 setDownloadUrl(zipUrl);
               }
 

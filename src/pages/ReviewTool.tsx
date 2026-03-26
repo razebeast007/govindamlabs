@@ -17,7 +17,7 @@ export default function ReviewTool({ goBack }: any) {
     setReviewUrl(null);
 
     try {
-      const res = await fetch("https://govindamlabs.onrender.com/find-review-page", {
+      const res = await fetch("http://178.104.72.19:8000/find-review-page", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -54,7 +54,7 @@ export default function ReviewTool({ goBack }: any) {
     setReviewUrl(null); // 🔥 important reset
 
     try {
-      const res = await fetch("https://govindamlabs.onrender.com/fix-flipkart-link", {
+      const res = await fetch("http://178.104.72.19:8000/fix-flipkart-link", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
