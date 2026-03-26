@@ -6,28 +6,25 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# ✅ FIXED CORS
+# ✅ CORS FIX
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,  # ❌ true hata diya
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ---------- MODEL ----------
 class LinkInput(BaseModel):
     links: list[str]
 
-
-# ---------- AUTO DELETE ZIP ----------
+# ---------- AUTO DELETE ----------
 def auto_delete(path):
     def delete():
         time.sleep(600)
         if os.path.exists(path):
             os.remove(path)
     threading.Thread(target=delete).start()
-
 
 # ---------- FLIPKART IMAGE ----------
 @app.post("/extract-live")
@@ -41,7 +38,8 @@ def extract_flipkart(data: LinkInput):
             try:
                 html = requests.get(link, headers={"User-Agent": "Mozilla/5.0"}).text
 
-                matches = re.findall(r'https://rukminim[^\"]+?\.jpeg', html)
+                # ✅ FIXED REGEX
+                matches = re.findall(r'https://rukminim[^\"]+?\.(?:jpeg|jpg)', html)
 
                 if matches:
                     img = matches[0]
@@ -90,7 +88,8 @@ def extract_amazon(data: LinkInput):
             try:
                 html = requests.get(link, headers={"User-Agent": "Mozilla/5.0"}).text
 
-                matches = re.findall(r'https://m\.media-amazon\.com/images/I/[^\"]+', html)
+                # ✅ LARGE IMAGE ONLY
+                matches = re.findall(r'"large":"(https://[^"]+)"', html)
 
                 if matches:
                     images.append(matches[0])
@@ -124,19 +123,19 @@ def extract_amazon(data: LinkInput):
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-# ---------- FIX FLIPKART LINK ----------
+# ---------- FIX LINK ----------
 @app.post("/fix-flipkart-link")
 def fix_link(data: LinkInput):
     fixed = []
 
     for link in data.links:
         try:
-            # 🔥 STEP 1: resolve short link
             res = requests.get(link, allow_redirects=True, headers={"User-Agent": "Mozilla/5.0"})
-            final_url = res.url
 
-            # 🔥 STEP 2: extract PID
-            match = re.search(r'pid=([A-Z0-9]+)', final_url)
+            # ✅ IMPROVED
+            final_text = res.text + res.url
+
+            match = re.search(r'pid=([A-Z0-9]+)', final_text)
 
             if match:
                 pid = match.group(1)
@@ -161,20 +160,22 @@ def find_review(data: LinkInput):
 
             pid = match.group(1)
 
+            # 🔥 NORMAL SEARCH
             for i in range(1, 101):
                 url = f"https://www.flipkart.com/reviews/{pid}:{i}"
                 html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).text
 
-                time.sleep(1.5)  # 🔥 ADD THIS
+                time.sleep(1.5)
 
                 if "customer review" in html.lower() or "ratings & reviews" in html.lower():
                     return {"url": url}
 
+            # 🔥 JUMP SEARCH
             for i in range(100, 1100, 100):
                 url = f"https://www.flipkart.com/reviews/{pid}:{i}"
                 html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).text
 
-                time.sleep(1.5)  # 🔥 ADD THIS
+                time.sleep(1.5)
 
                 if "customer review" in html.lower() or "ratings & reviews" in html.lower():
                     return {"url": url}

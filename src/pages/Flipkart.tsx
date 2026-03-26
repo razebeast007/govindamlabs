@@ -56,11 +56,9 @@ export default function FlipkartTool({ goBack }: any) {
             try {
               const data = JSON.parse(part.replace("data: ", ""));
 
-              // 🧠 LOGS
               if (data.status) {
                 setLogs(prev => [...prev, data.status]);
 
-                // 🔥 PROGRESS
                 if (data.status.includes("Processing")) {
                   doneCount++;
                   const percent = Math.min(95, Math.floor((doneCount / total) * 100));
@@ -68,7 +66,6 @@ export default function FlipkartTool({ goBack }: any) {
                 }
               }
 
-              // 📦 DONE
               if (data.done && !downloadTriggered) {
                 downloadTriggered = true;
 
@@ -180,15 +177,14 @@ export default function FlipkartTool({ goBack }: any) {
             </div>
           )}
 
-          {/* 📦 DOWNLOAD */}
+          {/* ✅ FIXED DOWNLOAD (UI SAME) */}
           {downloadUrl && (
-            <a
-              href={downloadUrl}
-              download="images.zip"
-              className="mt-6 block text-center py-3 rounded-xl bg-green-500 hover:bg-green-600 transition"
+            <button
+              onClick={() => window.location.href = downloadUrl}
+              className="mt-6 block w-full text-center py-3 rounded-xl bg-green-500 hover:bg-green-600 transition"
             >
               Download ZIP 📦
-            </a>
+            </button>
           )}
 
         </div>

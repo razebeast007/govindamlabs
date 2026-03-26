@@ -29,9 +29,10 @@ export default function ReviewTool({ goBack }: any) {
 
       if (data.url) {
         setReviewUrl(data.url);
-      }
- 
-      else {
+
+        // 🔥 optional auto open
+        window.open(data.url, "_blank");
+      } else {
         alert("❌ No review found");
       }
 
@@ -51,7 +52,7 @@ export default function ReviewTool({ goBack }: any) {
 
     setLoading(true);
     setFixedLink(null);
-    setReviewUrl(null); // 🔥 important reset
+    setReviewUrl(null);
 
     try {
       const res = await fetch("http://178.104.72.19:8000/fix-flipkart-link", {
@@ -63,7 +64,13 @@ export default function ReviewTool({ goBack }: any) {
       });
 
       const data = await res.json();
-      setFixedLink(data.fixed[0]);
+
+      // ✅ SAFE CHECK
+      if (data.fixed && data.fixed.length > 0) {
+        setFixedLink(data.fixed[0]);
+      } else {
+        alert("❌ PID not found");
+      }
 
     } catch {
       alert("Error hua 💀");
@@ -83,7 +90,7 @@ export default function ReviewTool({ goBack }: any) {
   const reset = () => {
     setLink("");
     setFixedLink(null);
-    setReviewUrl(null); // 🔥 FIX
+    setReviewUrl(null);
   };
 
   return (
@@ -144,23 +151,18 @@ export default function ReviewTool({ goBack }: any) {
               </div>
 
               {reviewUrl && (
-  <div className="mt-4 p-3 bg-black/40 border border-white/10 rounded text-green-400 break-all">
-    {reviewUrl}
-  </div>
-)}
+                <div className="mt-4 p-3 bg-black/40 border border-white/10 rounded text-green-400 break-all">
+                  {reviewUrl}
+                </div>
+              )}
 
-<button
-  onClick={getReviews}
-  disabled={finding}
-  className="
-    w-full mt-4 py-3 rounded-xl 
-    bg-green-500 hover:bg-green-600 
-    transition disabled:opacity-50
-  "
->
-  {finding ? "Searching..." : reviewUrl ? "Mil Gaya 😈" : "Get Reviews"}
-</button>
-
+              <button
+                onClick={getReviews}
+                disabled={finding}
+                className="w-full mt-4 py-3 rounded-xl bg-green-500 hover:bg-green-600 transition disabled:opacity-50"
+              >
+                {finding ? "Searching..." : "Get Reviews"}
+              </button>
 
             </div>
           )}

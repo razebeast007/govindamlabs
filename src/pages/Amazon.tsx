@@ -183,16 +183,14 @@ export default function AmazonTool({ goBack }: any) {
             </div>
           )}
 
-          {/* 📦 DOWNLOAD */}
           {downloadUrl && (
-            <a
-              href={downloadUrl}
-              download="images.zip"
-              className="mt-6 block text-center py-3 rounded-xl bg-green-500 hover:bg-green-600 transition"
-            >
-              Download ZIP 📦
-            </a>
-          )}
+  <button
+    onClick={() => window.location.href = downloadUrl}
+    className="mt-6 block text-center py-3 rounded-xl bg-green-500 hover:bg-green-600 transition"
+  >
+    Download ZIP 📦
+  </button>
+)}
 
         </div>
       </div>
