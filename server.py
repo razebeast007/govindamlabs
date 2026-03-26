@@ -2,8 +2,16 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 import requests, re, os, zipfile, time, threading
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # production me restrict kar sakte hain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ---------- MODEL ----------
 class LinkInput(BaseModel):
