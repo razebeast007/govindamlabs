@@ -31,11 +31,13 @@ def extract_flipkart(data: LinkInput):
             try:
                 html = requests.get(link, headers={"User-Agent": "Mozilla/5.0"}).text
 
-                matches = re.findall(r'https://rukminim\d\.flixcart\.com/image/[^\"]+', html)
+                matches = re.findall(r'https://rukminim[^\"]+?\.jpeg', html)
 
                 if matches:
-                    img = matches[0] + "?q=90"
-                    images.append(img)
+                     img = matches[0]
+                     if "?q=" not in img:
+                        img += "?q=90"
+                      images.append(img)
 
             except:
                 pass
@@ -62,7 +64,7 @@ def extract_flipkart(data: LinkInput):
 
         auto_delete(zip_path)
 
-        yield f"data: {{\"filename\": \"{zip_name}\", \"done\": true}}\n\n"
+        yield f"data: {{\"status\": \"Done\", \"filename\": \"{zip_name}\", \"done\": true}}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
@@ -79,7 +81,7 @@ def extract_amazon(data: LinkInput):
             try:
                 html = requests.get(link, headers={"User-Agent": "Mozilla/5.0"}).text
 
-                matches = re.findall(r'"large":"(https://[^"]+)"', html)
+                matches = re.findall(r'https://m\.media-amazon\.com/images/I/[^\"]+', html)
 
                 if matches:
                     images.append(matches[0])
@@ -108,7 +110,7 @@ def extract_amazon(data: LinkInput):
 
         auto_delete(zip_path)
 
-        yield f"data: {{\"filename\": \"{zip_name}\", \"done\": true}}\n\n"
+        yield f"data: {{\"status\": \"Done\", \"filename\": \"{zip_name}\", \"done\": true}}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
@@ -154,7 +156,7 @@ def find_review(data: LinkInput):
                 url = f"https://www.flipkart.com/reviews/{pid}:{i}"
                 html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).text
 
-                if "customer reviews" in html.lower():
+                if "customer review" in html.lower():
                     return {"url": url}
 
         except:
