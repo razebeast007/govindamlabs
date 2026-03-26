@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# ✅ CORS FIX
+# ✅ CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -29,6 +29,7 @@ def auto_delete(path):
 # ---------- FLIPKART IMAGE ----------
 @app.post("/extract-live")
 def extract_flipkart(data: LinkInput):
+
     def event_stream():
         images = []
 
@@ -38,7 +39,6 @@ def extract_flipkart(data: LinkInput):
             try:
                 html = requests.get(link, headers={"User-Agent": "Mozilla/5.0"}).text
 
-                # ✅ FIXED REGEX
                 matches = re.findall(r'https://rukminim[^\"]+?\.(?:jpeg|jpg)', html)
 
                 if matches:
@@ -50,22 +50,48 @@ def extract_flipkart(data: LinkInput):
             except:
                 pass
 
+        # ❌ NO IMAGES → EMPTY ZIP
         if not images:
-        zip_name = f"empty_{int(time.time())}.zip"
+            zip_name = f"empty_{int(time.time())}.zip"
+            zip_path = f"/root/govindamlabs/{zip_name}"
+
+            with zipfile.ZipFile(zip_path, "w") as z:
+                pass
+
+            auto_delete(zip_path)
+
+            yield f"data: {{\"status\": \"No images ❌\", \"filename\": \"{zip_name}\", \"done\": true}}\n\n"
+            return
+
+        # ✅ CREATE ZIP
+        zip_name = f"images_{int(time.time())}.zip"
         zip_path = f"/root/govindamlabs/{zip_name}"
 
         with zipfile.ZipFile(zip_path, "w") as z:
-        pass
+            for i, img in enumerate(images):
+                try:
+                    img_data = requests.get(img).content
+                    file_name = f"{i}.jpg"
+
+                    with open(file_name, "wb") as f:
+                        f.write(img_data)
+
+                    z.write(file_name)
+                    os.remove(file_name)
+                except:
+                    pass
 
         auto_delete(zip_path)
 
-        yield f"data: {{\"status\": \"No images found ❌\", \"filename\": \"{zip_name}\", \"done\": true}}\n\n"
-        return
+        yield f"data: {{\"status\": \"Done\", \"filename\": \"{zip_name}\", \"done\": true}}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 # ---------- AMAZON IMAGE ----------
 @app.post("/extract-amazon-live")
 def extract_amazon(data: LinkInput):
+
     def event_stream():
         images = []
 
@@ -75,7 +101,6 @@ def extract_amazon(data: LinkInput):
             try:
                 html = requests.get(link, headers={"User-Agent": "Mozilla/5.0"}).text
 
-                # ✅ LARGE IMAGE ONLY
                 matches = re.findall(r'https://m\.media-amazon\.com/images/I/[^\"]+', html)
 
                 if matches:
@@ -84,18 +109,42 @@ def extract_amazon(data: LinkInput):
             except:
                 pass
 
-        # ---------- FLIPKART ----------
-      if not images:
-      zip_name = f"empty_{int(time.time())}.zip"
-      zip_path = f"/root/govindamlabs/{zip_name}"
+        # ❌ NO IMAGES
+        if not images:
+            zip_name = f"empty_{int(time.time())}.zip"
+            zip_path = f"/root/govindamlabs/{zip_name}"
 
-      with zipfile.ZipFile(zip_path, "w") as z:
-      pass
+            with zipfile.ZipFile(zip_path, "w") as z:
+                pass
 
-      auto_delete(zip_path)
+            auto_delete(zip_path)
 
-      yield f"data: {{\"status\": \"No images found ❌\", \"filename\": \"{zip_name}\", \"done\": true}}\n\n"
-      return
+            yield f"data: {{\"status\": \"No images ❌\", \"filename\": \"{zip_name}\", \"done\": true}}\n\n"
+            return
+
+        # ✅ CREATE ZIP
+        zip_name = f"amazon_{int(time.time())}.zip"
+        zip_path = f"/root/govindamlabs/{zip_name}"
+
+        with zipfile.ZipFile(zip_path, "w") as z:
+            for i, img in enumerate(images):
+                try:
+                    img_data = requests.get(img).content
+                    file_name = f"{i}.jpg"
+
+                    with open(file_name, "wb") as f:
+                        f.write(img_data)
+
+                    z.write(file_name)
+                    os.remove(file_name)
+                except:
+                    pass
+
+        auto_delete(zip_path)
+
+        yield f"data: {{\"status\": \"Done\", \"filename\": \"{zip_name}\", \"done\": true}}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 # ---------- FIX LINK ----------
@@ -106,8 +155,6 @@ def fix_link(data: LinkInput):
     for link in data.links:
         try:
             res = requests.get(link, allow_redirects=True, headers={"User-Agent": "Mozilla/5.0"})
-
-            # ✅ IMPROVED
             final_text = res.text + res.url
 
             match = re.search(r'pid=([A-Z0-9]+)', final_text)
@@ -135,24 +182,20 @@ def find_review(data: LinkInput):
 
             pid = match.group(1)
 
-            # 🔥 NORMAL SEARCH
             for i in range(1, 101):
                 url = f"https://www.flipkart.com/reviews/{pid}:{i}"
-                html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).text
-
+                html = requests.get(url).text
                 time.sleep(2)
 
-                if "customer review" in html.lower() or "ratings & reviews" in html.lower():
+                if "customer review" in html.lower():
                     return {"url": url}
 
-            # 🔥 JUMP SEARCH
             for i in range(100, 1100, 100):
                 url = f"https://www.flipkart.com/reviews/{pid}:{i}"
-                html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).text
-
+                html = requests.get(url).text
                 time.sleep(2)
 
-                if "customer review" in html.lower() or "ratings & reviews" in html.lower():
+                if "customer review" in html.lower():
                     return {"url": url}
 
         except:
