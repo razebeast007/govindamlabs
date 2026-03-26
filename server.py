@@ -5,10 +5,12 @@ import requests, re, os, zipfile, time, threading
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+# ✅ FIXED CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # production me restrict kar sakte hain
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,  # ❌ true hata diya
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -21,7 +23,7 @@ class LinkInput(BaseModel):
 # ---------- AUTO DELETE ZIP ----------
 def auto_delete(path):
     def delete():
-        time.sleep(600)  # 10 min
+        time.sleep(600)
         if os.path.exists(path):
             os.remove(path)
     threading.Thread(target=delete).start()
@@ -42,10 +44,10 @@ def extract_flipkart(data: LinkInput):
                 matches = re.findall(r'https://rukminim[^\"]+?\.jpeg', html)
 
                 if matches:
-                     img = matches[0]
-                     if "?q=" not in img:
+                    img = matches[0]
+                    if "?q=" not in img:
                         img += "?q=90"
-                      images.append(img)
+                    images.append(img)
 
             except:
                 pass
@@ -54,7 +56,6 @@ def extract_flipkart(data: LinkInput):
             yield f"data: {{\"status\": \"No images\", \"done\": true}}\n\n"
             return
 
-        # create zip
         zip_name = f"images_{int(time.time())}.zip"
         zip_path = f"/root/govindamlabs/{zip_name}"
 
@@ -144,27 +145,24 @@ def fix_link(data: LinkInput):
 def find_review(data: LinkInput):
     for link in data.links:
         try:
-            # extract PID
             match = re.search(r'/reviews/([A-Z0-9]+)', link)
             if not match:
                 continue
 
             pid = match.group(1)
 
-            # try 1–100
             for i in range(1, 101):
                 url = f"https://www.flipkart.com/reviews/{pid}:{i}"
                 html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).text
 
-                if "customer review" in html.lower():
+                if "customer review" in html.lower() or "ratings & reviews" in html.lower():
                     return {"url": url}
 
-            # try jumps
             for i in range(100, 1100, 100):
                 url = f"https://www.flipkart.com/reviews/{pid}:{i}"
                 html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).text
 
-                if "customer review" in html.lower():
+                if "customer review" in html.lower() or "ratings & reviews" in html.lower():
                     return {"url": url}
 
         except:
