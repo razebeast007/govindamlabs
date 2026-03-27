@@ -73,11 +73,13 @@ def event_stream(links):
             # backup
             if not img_url:
                 imgs = driver.find_elements(By.TAG_NAME, "img")
-                for img in imgs:
-                    src = img.get_attribute("src")
-                    if src and "rukminim" in src:
-                        img_url = src
-                        break
+
+for img in imgs:
+    src = img.get_attribute("src")
+
+    if src and ".jpeg?q=90" in src:
+        img_url = src
+        break
 
             if img_url:
                 file = download_image(img_url, folder)
